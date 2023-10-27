@@ -51,7 +51,8 @@ def get_worker_public_ips(eb_environment_name):
 
 def get_manager_instance_by_eb_environment_name(eb_environment_name):
     """ Get a manager dictionary of the currently running manager server. """
-    managers = get_instances_by_name(PROCESSING_MANAGER_NAME % eb_environment_name)
+    managers = get_instances_by_name(
+        PROCESSING_MANAGER_NAME % eb_environment_name)
 
     if len(managers) > 1:
         msg = "Discovered multiple manager servers. This configuration is not supported and should be corrected."
@@ -72,12 +73,12 @@ def get_instances_by_name(instance_name):
     https://stackoverflow.com/questions/37293366/what-is-the-correct-ways-to-write-boto3-filters-to-use-customise-tag-name
     """
     reservations = create_ec2_client().describe_instances(
-            Filters=[
-                {'Name': 'tag:Name',
-                 'Values': [instance_name]},
-                {'Name': 'instance-state-name',
-                 'Values': ['running']},
-            ]
+        Filters=[
+            {'Name': 'tag:Name',
+             'Values': [instance_name]},
+            {'Name': 'instance-state-name',
+             'Values': ['running']},
+        ]
     )['Reservations']
 
     # need to concatenate all instances from every "reservation", whatever that is.
@@ -86,7 +87,8 @@ def get_instances_by_name(instance_name):
         instances.extend(reservation['Instances'])
 
     if not instances:
-        log.error("Could not find any instances matching the name '%s'" % instance_name)
+        log.error("Could not find any instances matching the name '%s'" %
+                  instance_name)
 
     return instances
 
@@ -107,16 +109,17 @@ def get_most_recent_ubuntu():
     """
     ec2_client = create_ec2_client()
     images = ec2_client.describe_images(
-            Filters=[
-                {"Name": 'state', "Values": ['available']},
-                {
-                    "Name": 'name',
-                    "Values": ["ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server*"]
-                },
-            ]
+        Filters=[
+            {"Name": 'state', "Values": ['available']},
+            {
+                "Name": 'name',
+                "Values": ["ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server*"]
+            },
+        ]
     )['Images']
     # The names are time-sortable, we want the most recent one, it is at the bottom of a sorted list
-    images = [image for image in images if "aws-marketplace" not in image["ImageLocation"]]
+    images = [
+        image for image in images if "aws-marketplace" not in image["ImageLocation"]]
     images.sort(key=lambda x: x['Name'])
     log.info("Using AMI '%s'" % images[-1]['Name'])
     return images[-1]
@@ -135,20 +138,23 @@ def construct_rabbit_mq_security_group_name(eb_environment_name):
 
 
 def get_or_create_rabbit_mq_security_group(eb_environment_name):
-    rabbit_mq_sec_grp_name = construct_rabbit_mq_security_group_name(eb_environment_name)
+    rabbit_mq_sec_grp_name = construct_rabbit_mq_security_group_name(
+        eb_environment_name)
     # we assume that the group was created correctly, don't attempt to add rules if we find it
     try:
         return get_security_group_by_name(rabbit_mq_sec_grp_name)
     except InvalidSecurityGroupNameException:
-        log.info("Did not find a security group named '%s,' creating it." % rabbit_mq_sec_grp_name)
-        instance_sec_grp_id = get_rds_security_groups_by_eb_name(eb_environment_name)["instance_sec_grp"]['GroupId']
+        log.info("Did not find a security group named '%s,' creating it." %
+                 rabbit_mq_sec_grp_name)
+        instance_sec_grp_id = get_rds_security_groups_by_eb_name(
+            eb_environment_name)["instance_sec_grp"]['GroupId']
         ingress_params = create_sec_grp_rule_parameters_allowing_traffic_from_another_security_group(
-                tcp_port=RABBIT_MQ_PORT, sec_grp_id=instance_sec_grp_id
+            tcp_port=RABBIT_MQ_PORT, sec_grp_id=instance_sec_grp_id
         )
         sec_grp = create_security_group(
-                rabbit_mq_sec_grp_name,
-                RABBIT_MQ_SEC_GRP_DESCRIPTION % instance_sec_grp_id,
-                list_of_dicts_of_ingress_kwargs=[ingress_params]
+            rabbit_mq_sec_grp_name,
+            RABBIT_MQ_SEC_GRP_DESCRIPTION % instance_sec_grp_id,
+            list_of_dicts_of_ingress_kwargs=[ingress_params]
         )
         open_tcp_port(sec_grp['GroupId'], 22)
         return get_security_group_by_id(sec_grp['GroupId'])
@@ -163,7 +169,8 @@ def create_server(eb_environment_name, aws_server_type, security_groups=None):
     if security_groups is None:
         security_groups = []
     if not isinstance(security_groups, list):
-        raise Exception("security_groups must be a list, received '%s'" % type(security_groups))
+        raise Exception(
+            "security_groups must be a list, received '%s'" % type(security_groups))
 
     ebs_parameters = {
         'DeviceName': '/dev/sda1',  # boot drive...
@@ -171,72 +178,75 @@ def create_server(eb_environment_name, aws_server_type, security_groups=None):
             'DeleteOnTermination': True,
             'Encrypted': True,
             'VolumeSize': 20,
-        # gigabytes, No storage is required on any ubuntu machines, 8 is default
+            # gigabytes, No storage is required on any ubuntu machines, 8 is default
             'VolumeType': 'gp2'}  # SSD...
     }
 
     instance = ec2_client.run_instances(
-            ImageId=get_most_recent_ubuntu()['ImageId'],
-            MinCount=1,
-            MaxCount=1,
-            KeyName=GLOBAL_CONFIGURATION['DEPLOYMENT_KEY_NAME'],
-            InstanceType=aws_server_type,
-            SecurityGroupIds=security_groups,
-            # NetworkInterfaces=[{"DeviceIndex": 0,
-            #                     "AssociatePublicIpAddress": True,
-            #                     "SubnetId": config.public_subnet_id,
-            #                     "Groups": security_groups_list}],
-            # IamInstanceProfile={"Arn": MANAGER_IAM_ROLE},
-            BlockDeviceMappings=[ebs_parameters],
-            Monitoring={'Enabled': False},
-            InstanceInitiatedShutdownBehavior='stop',
-            # Placement={'AvailabilityZone': 'string',
-            #            'Affinity': 'string',
-            #            'GroupName': 'string',
-            #            'HostId': 'string',
-            #            'Tenancy': 'default'|'dedicated'|'host',
-            #            'SpreadDomain': 'string'
-            #           },
-            # IamInstanceProfile={'Arn': 'string',
-            #                    'Name': 'string'},
+        ImageId=get_most_recent_ubuntu()['ImageId'],
+        MinCount=1,
+        MaxCount=1,
+        KeyName=GLOBAL_CONFIGURATION['DEPLOYMENT_KEY_NAME'],
+        InstanceType=aws_server_type,
+        SecurityGroupIds=security_groups,
+        # NetworkInterfaces=[{"DeviceIndex": 0,
+        #                     "AssociatePublicIpAddress": True,
+        #                     "SubnetId": config.public_subnet_id,
+        #                     "Groups": security_groups_list}],
+        # IamInstanceProfile={"Arn": MANAGER_IAM_ROLE},
+        BlockDeviceMappings=[ebs_parameters],
+        Monitoring={'Enabled': False},
+        InstanceInitiatedShutdownBehavior='stop',
+        # Placement={'AvailabilityZone': 'string',
+        #            'Affinity': 'string',
+        #            'GroupName': 'string',
+        #            'HostId': 'string',
+        #            'Tenancy': 'default'|'dedicated'|'host',
+        #            'SpreadDomain': 'string'
+        #           },
+        # IamInstanceProfile={'Arn': 'string',
+        #                    'Name': 'string'},
 
-            # NetworkInterfaces=[ {
-            #         'AssociatePublicIpAddress': True|False,
-            #         'DeleteOnTermination': True|False,
-            #         'Description': 'string',
-            #         'DeviceIndex': 123,
-            #         'Groups': ['string',],
-            #         'Ipv6AddressCount': 123,
-            #         'Ipv6Addresses': [ { 'Ipv6Address': 'string' }, ],
-            #         'NetworkInterfaceId': 'string',
-            #         'PrivateIpAddress': 'string',
-            #         'PrivateIpAddresses': [ {'Primary': True|False,
-            #                                  'PrivateIpAddress': 'string'},],
-            #         'SecondaryPrivateIpAddressCount': 123,
-            #         'SubnetId': 'string'
-            #     }, ],
-            #
-            # TagSpecifications=[ {
-            #         'ResourceType': 'customer-gateway'|'dhcp-options'|'image'|'instance'|'internet-gateway'|'network-acl'|'network-interface'|'reserved-instances'|'route-table'|'snapshot'|'spot-instances-request'|'subnet'|'security-group'|'volume'|'vpc'|'vpn-connection'|'vpn-gateway',
-            #         'Tags': [ { 'Key': 'string',
-            #                     'Value': 'string'},]
-            #         },
-            # ]
+        # NetworkInterfaces=[ {
+        #         'AssociatePublicIpAddress': True|False,
+        #         'DeleteOnTermination': True|False,
+        #         'Description': 'string',
+        #         'DeviceIndex': 123,
+        #         'Groups': ['string',],
+        #         'Ipv6AddressCount': 123,
+        #         'Ipv6Addresses': [ { 'Ipv6Address': 'string' }, ],
+        #         'NetworkInterfaceId': 'string',
+        #         'PrivateIpAddress': 'string',
+        #         'PrivateIpAddresses': [ {'Primary': True|False,
+        #                                  'PrivateIpAddress': 'string'},],
+        #         'SecondaryPrivateIpAddressCount': 123,
+        #         'SubnetId': 'string'
+        #     }, ],
+        #
+        # TagSpecifications=[ {
+        #         'ResourceType': 'customer-gateway'|'dhcp-options'|'image'|'instance'|'internet-gateway'|'network-acl'|'network-interface'|'reserved-instances'|'route-table'|'snapshot'|'spot-instances-request'|'subnet'|'security-group'|'volume'|'vpc'|'vpn-connection'|'vpn-gateway',
+        #         'Tags': [ { 'Key': 'string',
+        #                     'Value': 'string'},]
+        #         },
+        # ]
     )["Instances"][0]
     instance_id = instance["InstanceId"]
     instance_resource = create_ec2_resource().Instance(instance_id)
     log.info("Waiting for server %s to show up..." % instance_id)
     instance_resource.wait_until_exists()
-    log.info("Waiting until server %s is up and running (this may take a minute) ..." % instance_id)
+    log.info(
+        "Waiting until server %s is up and running (this may take a minute) ..." % instance_id)
     instance_resource.wait_until_running()
     return get_instance_by_id(instance_id)
 
 
 def create_processing_server(eb_environment_name, aws_server_type):
-    instance_sec_grp_id = get_rds_security_groups_by_eb_name(eb_environment_name)["instance_sec_grp"]['GroupId']
+    instance_sec_grp_id = get_rds_security_groups_by_eb_name(
+        eb_environment_name)["instance_sec_grp"]['GroupId']
     instance_info = create_server(eb_environment_name, aws_server_type,
                                   security_groups=[instance_sec_grp_id])
-    instance_resource = create_ec2_resource().Instance(instance_info["InstanceId"])
+    instance_resource = create_ec2_resource().Instance(
+        instance_info["InstanceId"])
     instance_resource.create_tags(Tags=[
         {"Key": "Name", "Value": PROCESSING_WORKER_NAME % eb_environment_name},
         {"Key": "is_processing_worker", "Value": "1"}
@@ -249,22 +259,29 @@ def create_processing_control_server(eb_environment_name, aws_server_type):
     server is that the controller needs to allow connections from the processors. """
 
     # this will fail if there are no security groups (safety check against out of order operations.)
-    _ = get_rds_security_groups_by_eb_name(eb_environment_name)["instance_sec_grp"]['GroupId']
+    _ = get_rds_security_groups_by_eb_name(eb_environment_name)[
+        "instance_sec_grp"]['GroupId']
 
-    manager_info = get_manager_instance_by_eb_environment_name(eb_environment_name)
+    manager_info = get_manager_instance_by_eb_environment_name(
+        eb_environment_name)
     if manager_info is not None:
         if manager_info['InstanceType'] == aws_server_type:
-            msg = "A manager server, %s, already exists for this environment, and it is of the provided type (%s)." % (manager_info['InstanceId'], aws_server_type)
+            msg = "A manager server, %s, already exists for this environment, and it is of the provided type (%s)." % (
+                manager_info['InstanceId'], aws_server_type)
         else:
-            msg = "A manager server, %s, already exists for this environment." % manager_info['InstanceId']
+            msg = "A manager server, %s, already exists for this environment." % manager_info[
+                'InstanceId']
         log.error(msg)
         msg = "You must terminate all worker and manager servers before you can create a new manager."
         log.error(msg)
-        sleep(0.1)  # sometimes log has problems if you don't give it a second, the error messages above are critical
+        # sometimes log has problems if you don't give it a second, the error messages above are critical
+        sleep(0.1)
         raise Exception(msg)
 
-    rabbit_mq_sec_grp_id = get_or_create_rabbit_mq_security_group(eb_environment_name)['GroupId']
-    instance_sec_grp_id = get_rds_security_groups_by_eb_name(eb_environment_name)["instance_sec_grp"]['GroupId']
+    rabbit_mq_sec_grp_id = get_or_create_rabbit_mq_security_group(
+        eb_environment_name)['GroupId']
+    instance_sec_grp_id = get_rds_security_groups_by_eb_name(
+        eb_environment_name)["instance_sec_grp"]['GroupId']
 
     try:
         open_tcp_port(instance_sec_grp_id, 22)
@@ -275,24 +292,33 @@ def create_processing_control_server(eb_environment_name, aws_server_type):
 
     instance_info = create_server(eb_environment_name, aws_server_type,
                                   security_groups=[rabbit_mq_sec_grp_id, instance_sec_grp_id])
-    instance_resource = create_ec2_resource().Instance(instance_info["InstanceId"])
+    instance_resource = create_ec2_resource().Instance(
+        instance_info["InstanceId"])
     instance_resource.create_tags(Tags=[
         {"Key": "Name", "Value": PROCESSING_MANAGER_NAME % eb_environment_name},
-        {"Key": "is_processing_manager", "Value":"1"}
+        {"Key": "is_processing_manager", "Value": "1"}
     ])
+
+    # NOTE: For debugging: to avoid creating new instance
+    # ec2_client = create_ec2_client()
+    # instance_info = ec2_client.describe_instances(InstanceIds=["i-05f668ca1ea159a1a"])[
+    #     'Reservations'][0]["Instances"][0]
     return instance_info
 
 
 def terminate_all_processing_servers(eb_environment_name):
     ec2_client = create_ec2_client()
-    worker_ids = [worker['InstanceId'] for worker in get_worker_instances(eb_environment_name)]
+    worker_ids = [worker['InstanceId']
+                  for worker in get_worker_instances(eb_environment_name)]
 
     # don't optimize, we want the log statements
     for instance_id in worker_ids:
         ec2_client.terminate_instances(InstanceIds=[instance_id])
         log.info(f"Terminating worker instance {instance_id}")
 
-    manager_info = get_manager_instance_by_eb_environment_name(eb_environment_name)
+    manager_info = get_manager_instance_by_eb_environment_name(
+        eb_environment_name)
     if manager_info:
         log.info(f"Terminating manager instance {manager_info['InstanceId']}")
-        ec2_client.terminate_instances(InstanceIds=[manager_info['InstanceId']])
+        ec2_client.terminate_instances(
+            InstanceIds=[manager_info['InstanceId']])

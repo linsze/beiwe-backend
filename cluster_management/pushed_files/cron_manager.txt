@@ -32,4 +32,4 @@ PROJECT_PATH="/home/ubuntu/beiwe-backend/services"
 @daily : daily; cd $PROJECT_PATH; chronic /home/ubuntu/.pyenv/versions/beiwe/bin/python cron.py daily
 @daily : daily; journalctl --vacuum-time=1w
 0 2 * * 0 : weekly; cd $PROJECT_PATH; chronic /home/ubuntu/.pyenv/versions/beiwe/bin/python cron.py weekly
-29 4 * * *: pkill -HUP supervisord
+29 4 * * * : pkill -HUP supervisord

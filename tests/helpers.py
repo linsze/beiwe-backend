@@ -475,6 +475,7 @@ class ReferenceObjectMixin:
         """ The creation of weekly events is weird, it best to use the real machinery and build
         some unit tests for it. At time of documenting none exist, but there are some integration
         tests. """
+        # 0 indexes to sunday, 6 indexes to saturday.
         self.generate_weekly_schedule(self.default_survey, day_of_week, hour, minute)
         return set_next_weekly(self.default_participant, self.default_survey)
     

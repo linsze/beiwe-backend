@@ -3,7 +3,7 @@ import random
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Tuple
-
+from dateutil.tz import gettz
 from django.utils import timezone
 from firebase_admin.messaging import (AndroidConfig, Message, Notification, QuotaExceededError,
     send as send_notification, SenderIdMismatchError, ThirdPartyAuthError, UnregisteredError)
@@ -24,6 +24,13 @@ from libs.internal_types import DictOfStrStr, DictOfStrToListOfStr
 from libs.schedules import set_next_weekly
 from libs.sentry import make_error_sentry, SentryTypes
 
+UTC = gettz("UTC")
+
+PUSH_NOTIFICATION_LOGGING_ENABLED = False
+
+def log(*args, **kwargs):
+    if PUSH_NOTIFICATION_LOGGING_ENABLED:
+        print(*args, **kwargs)
 
 ################################################################E###############
 ############################# PUSH NOTIFICATIONS ###############################
@@ -35,32 +42,93 @@ def get_surveys_and_schedules(now: datetime) -> Tuple[DictOfStrToListOfStr, Dict
     a mapping of fcm tokens to list of survey object ids
     a mapping of fcm tokens to list of schedule ids
     a mapping of fcm tokens to patient ids """
+    log(f"\nchecking if any scheduled events are in the past (before {now})")
+    
+    # we need to find all possible events and convert them on a per-participant-timezone basis.
+    # The largest timezone offset is +14?, but we will do one whole day and manually filter.
+    tomorrow = now + timedelta(days=1)
+    
     # get: schedule time is in the past for participants that have fcm tokens.
     # need to filter out unregistered fcms, database schema sucks for that, do it in python. its fine.
     query = ScheduledEvent.objects.filter(
         # core
-        scheduled_time__lte=now, participant__fcm_tokens__isnull=False,
+        scheduled_time__lte=tomorrow,
+        participant__fcm_tokens__isnull=False,
         # safety
-        participant__deleted=False, survey__deleted=False,
+        participant__deleted=False,
+        survey__deleted=False,
         # Shouldn't be necessary, placeholder containing correct lte count.
         # participant__push_notification_unreachable_count__lte=PUSH_NOTIFICATION_ATTEMPT_COUNT
         # added august 2022, part of checkins
         deleted=False,
     ).values_list(
+        "scheduled_time",
         "survey__object_id",
+        "survey__study__timezone_name",
         "participant__fcm_tokens__token",
         "pk",
         "participant__patient_id",
         "participant__fcm_tokens__unregistered",
+        "participant__timezone_name",
+        "participant__unknown_timezone",
     )
     
     # we need a mapping of fcm tokens (a proxy for participants) to surveys and schedule ids (pks)
     surveys = defaultdict(list)
     schedules = defaultdict(list)
     patient_ids = {}
-    for survey_obj_id, fcm, schedule_id, patient_id, unregistered in query:
+    
+    # unregistered means that the FCM push notification token has been marked as unregistered, which
+    # is fcm-speak for invalid push notification token. It's probably possible to update the query
+    # to bad fcm tokens, but it becomes complex. The filtering is fast enough in Python.
+    unregistered: bool
+    fcm: str  # fcm token
+    patient_id: str
+    survey_obj_id: str
+    scheduled_time: datetime  # in UTC
+    schedule_id: int
+    study_tz_name: str
+    participant_tz_name: str
+    participant_has_bad_tz: bool
+    for scheduled_time, survey_obj_id, study_tz_name, fcm, schedule_id, patient_id, unregistered, participant_tz_name, participant_has_bad_tz in query:
+        log("\nchecking scheduled event:")
+        log("unregistered:", unregistered)
+        log("fcm:", fcm)
+        log("patient_id:", patient_id)
+        log("survey_obj_id:", survey_obj_id)
+        log("scheduled_time:", scheduled_time)
+        log("schedule_id:", schedule_id)
+        log("study_tz_name:", study_tz_name)
+        log("participant_tz_name:", participant_tz_name)
+        log("participant_has_bad_tz:", participant_has_bad_tz)
+        
+        # case: this instance has an outdated FCM credential, skip it.
         if unregistered:
+            log("nope, unregistered fcm token")
             continue
+        
+        # The participant and study timezones REALLY SHOULD be valid timezone names. If they aren't
+        # valid then gettz's behavior is to return None; if gettz receives None or the empty string
+        # then it returns UTC. In order to at-least-be-consistent we will coerce no timezone to UTC.
+        # (At least gettz caches, so performance should be fine without adding complexity.)
+        participant_tz = gettz(study_tz_name) if participant_has_bad_tz else gettz(participant_tz_name)
+        participant_tz = participant_tz or UTC
+        study_tz = gettz(study_tz_name) or UTC
+        
+        # ScheduledEvents are created in the study's timezone, and in the database they are
+        # normalized to UTC. Convert it to the study timezone time - we'll call that canonical time
+        # - which will be the time of day assigned on the survey page. Then time-shift that into the
+        # participant's timezone, and check if That value is in the past.
+        canonical_time = scheduled_time.astimezone(study_tz)
+        participant_time = canonical_time.replace(tzinfo=participant_tz)
+        log("canonical_time:", canonical_time)
+        log("participant_time:", participant_time)
+        if participant_time > now:
+            log("nope, participant time is considered in the future")
+            log(f"{now} > {participant_time}")
+            continue
+        log("yup, participant time is considered in the past")
+        log(f"{now} <= {participant_time}")
         surveys[fcm].append(survey_obj_id)
         schedules[fcm].append(schedule_id)
         patient_ids[fcm] = patient_id

@@ -385,7 +385,9 @@ def format_survey_for_device(survey: Survey, participant: Participant):
     
     for schedule in query:
         # The date component is dropped, the representation is now 100% a weekly schedule
-        day_index, seconds = decompose_datetime_to_timings(schedule.scheduled_time_in_correct_tz)
+        # the correct timezone is the "canonical form", e.g. in the study timezone (and then in 
+        # survey timings form as offset from start of day)
+        day_index, seconds = decompose_datetime_to_timings(schedule.scheduled_time_in_canonical_form)
         survey_timings[day_index].append(seconds)
     
     # sort, deduplicate all days lists

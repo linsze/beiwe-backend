@@ -156,7 +156,6 @@ def repopulate_absolute_survey_schedule_events(survey: Survey, single_participan
     ScheduledEvent.objects.bulk_create(new_events)
 
 
-#TODO: this will need to be rewritten to examine existing relative schedules
 def repopulate_relative_survey_schedule_events(survey: Survey, single_participant: Participant = None) -> None:
     """ Creates new ScheduledEvents for the survey's RelativeSchedules while deleting the old
     ScheduledEvents related to the survey. """
@@ -173,6 +172,7 @@ def repopulate_relative_survey_schedule_events(survey: Survey, single_participan
     # intervention per schedule.  It is also per survey and all we really care about is
     # whether an event ever triggered on that survey.
     new_events = []
+    study_timezone = survey.study.timezone  # might as well cache this...
     for relative_schedule in survey.relative_schedules.all():
         # Only interventions that have been marked (have a date), for participants that are not
         # deleted, restrict on the single user case, get data points.
@@ -189,11 +189,11 @@ def repopulate_relative_survey_schedule_events(survey: Survey, single_participan
         
         for participant_id, intervention_date in intervention_dates_query:
             # + below is correct, 'days_after' is negative or 0 for days before and day of.
-            # intervention_date cannot be None, so how did we get an error here?
+            # bug: somehow got a Nonetype error even though intervention_date cannot be None... how?
             # "unsupported operand type(s) for +: 'NoneType' and 'datetime.timedelta'"
-            # I have checked and the order of the error statements reflects the code.
+            # (the order of items in the error statements reflects the code, so intervention_date was None.)
             scheduled_date = intervention_date + timedelta(days=relative_schedule.days_after)
-            schedule_time = relative_schedule.scheduled_time(scheduled_date, survey.study.timezone)
+            schedule_time = relative_schedule.scheduled_time(scheduled_date, study_timezone)
             # skip if already sent (archived event matching participant, survey, and schedule time)
             if ArchivedEvent.objects.filter(
                 participant_id=participant_id,
@@ -230,8 +230,8 @@ def get_next_weekly_event_and_schedule(survey: Survey) -> Tuple[datetime, Weekly
     
     # get the earliest next schedule_date
     timings_list.sort(key=lambda date_and_schedule: date_and_schedule[0])
-    schedule_date, schedule = timings_list[0]
-    return schedule_date, schedule
+    schedule_datetime, schedule = timings_list[0]
+    return schedule_datetime, schedule
 
 
 def export_weekly_survey_timings(survey: Survey) -> List[List[int]]:

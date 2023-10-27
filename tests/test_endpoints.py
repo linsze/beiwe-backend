@@ -34,7 +34,7 @@ from constants.message_strings import (DEVICE_HAS_NO_REGISTERED_TOKEN, MESSAGE_S
 from constants.schedule_constants import EMPTY_WEEKLY_SURVEY_TIMINGS
 from constants.security_constants import MFA_CREATED
 from constants.testing_constants import (ADMIN_ROLES, ALL_TESTING_ROLES, ANDROID_CERT, BACKEND_CERT,
-    IOS_CERT, MIDNIGHT_EVERY_DAY, OCT_6_NOON_2022)
+    IOS_CERT, MIDNIGHT_EVERY_DAY, THURS_OCT_6_NOON_2022_NY)
 from constants.url_constants import LOGIN_REDIRECT_SAFE, urlpatterns
 from constants.user_constants import ALL_RESEARCHER_TYPES, IOS_API, ResearcherRole
 from database.data_access_models import ChunkRegistry, FileToProcess
@@ -4053,7 +4053,7 @@ class TestGetLatestSurveys(ParticipantSessionTest):
         output_survey = json.loads(resp.content.decode())
         self.assertEqual(output_survey, reference_output)
     
-    @time_machine.travel(OCT_6_NOON_2022)
+    @time_machine.travel(THURS_OCT_6_NOON_2022_NY)
     def test_absolute_schedule_basics(self):
         # test for absolute surveys that they show up regardless of the day of the week they fall on,
         # as long as that day is within the current week.
@@ -4094,7 +4094,7 @@ class TestGetLatestSurveys(ParticipantSessionTest):
         output_survey = json.loads(resp.content.decode())
         self.assertEqual(output_survey, self.BASIC_SURVEY_CONTENT)
     
-    @time_machine.travel(OCT_6_NOON_2022)
+    @time_machine.travel(THURS_OCT_6_NOON_2022_NY)
     def test_relative_schedule_basics(self):
         # this test needds to run on a thursday
         # test that a relative survey creates schedules that get output in survey timings at all

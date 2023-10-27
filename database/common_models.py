@@ -64,6 +64,11 @@ class UtilityModel(models.Model):
     @property
     def pprint(self):
         """ shortcut for very common cli usage. """
+        d = self._pprint()
+        pprint(d)
+    
+    def _pprint(self) -> Dict[str, Any]:
+        """ Provides a dictionary representation of the object, with some special formatting. """
         d = self.as_dict()
         for k, v in d.items():
             if isinstance(v, datetime):
@@ -71,7 +76,7 @@ class UtilityModel(models.Model):
                 d[k] = localtime(v, the_one_true_timezone).strftime(DEV_TIME_FORMAT3)
             elif isinstance(v, date):
                 d[k] = v.isoformat()
-        pprint(d)
+        return d
     
     @classmethod
     def summary(cls):

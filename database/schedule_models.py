@@ -40,7 +40,7 @@ class AbsoluteSchedule(TimestampedModel):
             day=self.date.day,
             hour=self.hour,
             minute=self.minute,
-            tzinfo=self.survey.study.timezone
+            tzinfo=self.survey.study.timezone  # might be slow?
         )
     
     @staticmethod
@@ -77,15 +77,14 @@ class RelativeSchedule(TimestampedModel):
     scheduled_events: Manager[ScheduledEvent]
     
     def scheduled_time(self, intervention_date: date, tz: tzinfo) -> datetime:
-        # timezone should be determined externally and passed in
-        
-        # There is a small difference between applying the timezone via make_aware and
-        # via the tzinfo keyword.  Make_aware seems less weird, so we use that one
-        # example order is make_aware and then tzinfo, input was otherwise identical:
-        # datetime.datetime(2020, 12, 5, 14, 30, tzinfo=<DstTzInfo 'America/New_York' EST-1 day, 19:00:00 STD>)
-        # datetime.datetime(2020, 12, 5, 14, 30, tzinfo=<DstTzInfo 'America/New_York' LMT-1 day, 19:04:00 STD>)
-        
-        # the time of day (hour, minute) are not offsets, they are absolute.
+        """ Constructs a datetime object for the correct time, on the correct day, in the given timezone. """
+        # Timezone should be the study timezone, but this is in a potentially performance sensitive
+        #  location so we don't want to do the lookup. Instead we pass it in? We don't do that for
+        #  absolute schedules.
+
+        # The time of day (hour, minute) are not offsets, they are absolute.
+        # make_aware fixes the pytz America/New_York 4 minute offset, if you use pytz timezones.
+        #  - which we don't do anymore so we can probably delete this comment. We won't do that tho.
         return make_aware(
             datetime.combine(intervention_date, time(self.hour, self.minute)), tz
         )
@@ -117,11 +116,11 @@ class RelativeSchedule(TimestampedModel):
 class WeeklySchedule(TimestampedModel):
     """ Represents an instance of a time of day within a week for the weekly survey schedule.
         day_of_week is an integer, day 0 is Sunday.
-
+        
         The timings schema mimics the Java.util.Calendar.DayOfWeek specification: it is zero-indexed
          with day 0 as Sunday."""
     
-    survey = models.ForeignKey('Survey', on_delete=models.CASCADE, related_name='weekly_schedules')
+    survey: Survey = models.ForeignKey('Survey', on_delete=models.CASCADE, related_name='weekly_schedules')
     day_of_week = models.PositiveIntegerField(validators=[MaxValueValidator(6)])
     hour = models.PositiveIntegerField(validators=[MaxValueValidator(23)])
     minute = models.PositiveIntegerField(validators=[MaxValueValidator(59)])
@@ -214,8 +213,8 @@ class ScheduledEvent(TimestampedModel):
     }
     
     @property
-    def scheduled_time_in_correct_tz(self) -> datetime:
-        # TODO: get participant timezone
+    def scheduled_time_in_canonical_form(self) -> datetime:
+        # canonical form is the study timezone, that should match the time of day on the survey editor
         return self.scheduled_time.astimezone(self.survey.study.timezone)
     
     def get_schedule_type(self):

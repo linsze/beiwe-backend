@@ -149,8 +149,8 @@ def MIDNIGHT_EVERY_DAY():
 
 
 # we need some moments in space-time, so I guess we will use October Thursdays in New York of 2022
-_MERICA_NY = tz.gettz("New_York/America")
-OCT_6_NOON_2022 = datetime(2022, 10, 6, 12, )  # Thursday
-OCT_13_NOON_2022 = datetime(2022, 10, 13, 12, tzinfo=_MERICA_NY)  # Thursday
-OCT_20_NOON_2022 = datetime(2022, 10, 20, 12, tzinfo=_MERICA_NY)  # Thursday
-OCT_27_NOON_2022 = datetime(2022, 10, 27, 12, tzinfo=_MERICA_NY)  # Thursday
+_MERICA_NY = tz.gettz("America/New_York")
+THURS_OCT_6_NOON_2022_NY = datetime(2022, 10, 6, 12, tzinfo=_MERICA_NY)  # Thursday
+THURS_OCT_13_NOON_2022_NY = datetime(2022, 10, 13, 12, tzinfo=_MERICA_NY)  # Thursday
+THURS_OCT_20_NOON_2022_NY = datetime(2022, 10, 20, 12, tzinfo=_MERICA_NY)  # Thursday
+THURS_OCT_27_NOON_2022_NY = datetime(2022, 10, 27, 12, tzinfo=_MERICA_NY)  # Thursday

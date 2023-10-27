@@ -275,7 +275,7 @@ class DeviceSettings(TimestampedModel):
     # Text strings
     about_page_text = models.TextField(default=ABOUT_PAGE_TEXT)
     call_clinician_button_text = models.TextField(default='Call My Clinician')
-    consent_form_text = models.TextField(default=CONSENT_FORM_TEXT)
+    consent_form_text = models.TextField(default=CONSENT_FORM_TEXT, blank=True, null=False)
     survey_submit_success_toast_text = models.TextField(default=SURVEY_SUBMIT_SUCCESS_TOAST_TEXT)
     
     # Consent sections
